@@ -14,6 +14,7 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 import pandas as pd
+from rich.console import Console
 
 try:
     from sklearn.metrics import (
@@ -161,6 +162,7 @@ def process_single_file(
     segmented_images_dir: str = "./evaluation/segmented_images",
     groundtruth_dir: str = "./evaluation/ground_truth",
     dpi: float = None,
+    console: Console = None,
 ) -> List[Dict[str, float]]:
     file_name, ext = os.path.splitext(entry.name)
     if ext.lower() not in VALID_EXTENSIONS:
@@ -169,20 +171,35 @@ def process_single_file(
     prediction_path = os.path.join(segmented_images_dir, f"{file_name}.png")
     ground_truth_path = os.path.join(groundtruth_dir, f"{file_name}{ext}")
 
-    print(f"Processing image: {file_name}")
+    if console:
+        console.print(f"[cyan]Processing image:[/] [bold]{file_name}[/]")
+    else:
+        print(f"Processing image: {file_name}")
 
     if not os.path.exists(prediction_path) or not os.path.exists(ground_truth_path):
-        print(f"Missing prediction or ground truth for {file_name}")
+        error_msg = f"Missing prediction or ground truth for {file_name}"
+        if console:
+            console.print(f"[bold red]{error_msg}[/]")
+        else:
+            print(error_msg)
         return []
 
     try:
         prediction_img = cv2.cvtColor(cv2.imread(prediction_path), cv2.COLOR_BGR2RGB)
         ground_truth = cv2.cvtColor(cv2.imread(ground_truth_path), cv2.COLOR_BGR2RGB)
     except Exception as e:
-        print(f"Error reading images for {file_name}: {e}")
+        error_msg = f"Error reading images for {file_name}: {e}"
+        if console:
+            console.print(f"[bold red]{error_msg}[/]")
+        else:
+            print(error_msg)
         return []
 
-    print(f"  Calculating metrics for {file_name}")
+    if console:
+        console.print(f"  [green]Calculating metrics for[/] [bold]{file_name}[/]")
+    else:
+        print(f"  Calculating metrics for {file_name}")
+
     metrics = process_image_metrics(prediction_img, ground_truth, dpi=dpi)
     rows = []
 
@@ -206,7 +223,11 @@ def process_single_file(
             # Round all numeric values to 3 decimal places
             row[key] = round(val, 3) if isinstance(val, (int, float)) else val
         rows.append(row)
-    print(f"  Completed processing for {file_name}")
+
+    if console:
+        console.print(f"  [bold green]Completed processing for[/] [bold]{file_name}[/]")
+    else:
+        print(f"  Completed processing for {file_name}")
 
     return rows
 
@@ -235,24 +256,32 @@ def collect_image_metrics(
     Returns:
         pd.DataFrame: A DataFrame containing evaluation metrics for each image and class.
     """
-    print(f"Scanning directory: {images_to_segment_dir}")
+    console = Console()
+
+    console.print(f"[bold]Scanning directory:[/] {images_to_segment_dir}")
     entries = [entry for entry in os.scandir(images_to_segment_dir) if entry.is_file()]
-    print(f"Found {len(entries)} files to process")
+    console.print(f"[bold green]Found {len(entries)} files to process[/]")
     all_data = []
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        process_func = partial(
-            process_single_file,
-            segmented_images_dir=segmented_images_dir,
-            groundtruth_dir=groundtruth_dir,
-            dpi=dpi,
-        )
-        results = executor.map(process_func, entries)
+    with console.status("[bold green]Calculating metrics..."):
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            process_func = partial(
+                process_single_file,
+                segmented_images_dir=segmented_images_dir,
+                groundtruth_dir=groundtruth_dir,
+                dpi=dpi,
+                console=console,
+            )
+            results = executor.map(process_func, entries)
 
-        for res in results:
-            all_data.extend(res)
+            for res in results:
+                all_data.extend(res)
 
-    print(f"Processing complete. Generated metrics for {len(all_data)} class-image combinations")
+    console.print(
+        "[bold green]Processing complete! [/]"
+        + f"Generated metrics for {len(all_data)} class-image combinations"  # noqa: W503
+    )
+
     return pd.DataFrame(all_data)
 
 
@@ -298,12 +327,13 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    
-    print("Starting evaluation metrics generation...")
-    print(f"Images to segment directory: {args.images_to_segment_dir}")
-    print(f"Segmented images directory: {args.segmented_images_dir}")
-    print(f"Ground truth directory: {args.groundtruth_dir}")
-    print(f"DPI value: {args.dpi}")
+
+    console = Console()
+    console.print("[bold green]Starting evaluation metrics generation...[/]")
+    console.print(f"[bold]Images to segment directory:[/] {args.images_to_segment_dir}")
+    console.print(f"[bold]Segmented images directory:[/] {args.segmented_images_dir}")
+    console.print(f"[bold]Ground truth directory:[/] {args.groundtruth_dir}")
+    console.print(f"[bold]DPI value:[/] {args.dpi}")
 
     df = collect_image_metrics(
         images_to_segment_dir=args.images_to_segment_dir,
@@ -312,7 +342,7 @@ if __name__ == "__main__":
         dpi=args.dpi,
     )
 
-    print(f"Writing results to CSV: {args.output_csv_path}")
+    console.print(f"[bold]Writing results to CSV:[/] {args.output_csv_path}")
     df.to_csv(args.output_csv_path, index=False)
-    print(f"Metrics saved to {args.output_csv_path}")
-    print("Evaluation complete!")
+    console.print(f"[bold green]Metrics saved to {args.output_csv_path}[/]")
+    console.print("[bold green]Evaluation complete![/]")

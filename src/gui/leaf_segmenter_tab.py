@@ -150,7 +150,6 @@ class LeafSegmenterTab(ttk.Frame):
             try:
                 import os
                 import time
-                import errno
 
                 start_time = time.time()
                 input_dir = self.input_dir.get()
@@ -158,35 +157,21 @@ class LeafSegmenterTab(ttk.Frame):
 
                 # Check if directories exist and have proper permissions
                 if not os.path.exists(input_dir):
-                    self._show_status(f"Error: Input directory '{input_dir}' does not exist.")
-                    return
-                
-                if not os.access(input_dir, os.R_OK):
-                    self._show_status(f"Error: No permission to read from input directory '{input_dir}'.")
-                    return
-                
-                # Ensure output directory exists or can be created
-                try:
-                    os.makedirs(output_dir, exist_ok=True)
-                except PermissionError:
-                    self._show_status(f"Error: No permission to create or write to output directory '{output_dir}'.")
+                    self._show_status(
+                        f"Error: Input directory '{input_dir}' does not exist."
+                    )
                     return
 
-                if not os.access(output_dir, os.W_OK):
-                    self._show_status(f"Error: No permission to write to output directory '{output_dir}'.")
-                    return
+                # Ensure output directory exists or can be created
+                os.makedirs(output_dir, exist_ok=True)
 
                 # Check input files
-                try:
-                    input_images = [
-                        f
-                        for f in os.listdir(input_dir)
-                        if f.lower().endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff"))
-                    ]
-                    total_images = len(input_images)
-                except PermissionError:
-                    self._show_status(f"Error: No permission to list files in input directory '{input_dir}'.")
-                    return
+                input_images = [
+                    f
+                    for f in os.listdir(input_dir)
+                    if f.lower().endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff"))
+                ]
+                total_images = len(input_images)
 
                 if total_images == 0:
                     self._show_status("No images found in the input directory.")
@@ -195,19 +180,14 @@ class LeafSegmenterTab(ttk.Frame):
                 # Check model file
                 model_path = self.model_path.get()
                 if model_path and not os.path.exists(model_path):
-                    self._show_status(f"Error: Model file '{model_path}' does not exist.")
+                    self._show_status(
+                        f"Error: Model file '{model_path}' does not exist."
+                    )
                     return
-                
-                if model_path and not os.access(model_path, os.R_OK):
-                    self._show_status(f"Error: No permission to read model file '{model_path}'.")
-                    return
-                
+
                 # Create segmenter object without callback (we'll manage progress ourselves)
                 try:
                     segmenter = LeafSegmenter(model_path)
-                except PermissionError:
-                    self._show_status(f"Error: Permission denied when loading model '{model_path}'.")
-                    return
                 except Exception as e:
                     self._show_status(f"Error loading model: {e}")
                     return
@@ -225,11 +205,6 @@ class LeafSegmenterTab(ttk.Frame):
                 try:
                     segmenter.segmenter(input_dir, output_dir)
                     segmenter.make_bilan()
-                except PermissionError as e:
-                    stop_monitoring.set()
-                    monitor_thread.join(timeout=1.0)
-                    self._show_status(f"Permission error during segmentation: {e}\nMake sure you have proper permissions to read/write in the input/output directories.")
-                    return
                 except Exception as e:
                     stop_monitoring.set()
                     monitor_thread.join(timeout=1.0)
@@ -270,10 +245,6 @@ class LeafSegmenterTab(ttk.Frame):
                 self._show_status(f"Segmentation completed. {time_format}")
                 # Update stats in main thread
                 self.after(0, self._update_stats)
-            except PermissionError as e:
-                error_path = str(e).split(":")[-1].strip() if ":" in str(e) else "unknown path"
-                self._show_status(f"Permission denied: Cannot access or write to {error_path}.\n"
-                                 "Please check that you have the required permissions for the input/output directories.")
             except Exception as e:
                 self._show_status(f"Error: {e}")
             finally:
@@ -309,12 +280,7 @@ class LeafSegmenterTab(ttk.Frame):
         import time
 
         # Ensure the directory exists
-        try:
-            os.makedirs(output_dir, exist_ok=True)
-        except PermissionError:
-            self.after(0, lambda: self._show_status(
-                f"Error: No permission to create or access output directory '{output_dir}'"))
-            return
+        os.makedirs(output_dir, exist_ok=True)
 
         last_count = 0
         start_time = time.time()
@@ -332,12 +298,10 @@ class LeafSegmenterTab(ttk.Frame):
                         )
                     ]
                     processed_count = len(output_files)
-                except PermissionError:
-                    self.after(0, lambda: self._show_status(
-                        f"Error: No permission to list files in output directory '{output_dir}'"))
-                    return
-                except Exception as e:
-                    self.after(0, lambda: self._show_status(f"Error monitoring progress: {e}"))
+                except Exception:
+                    self.after(
+                        0, lambda: self._show_status("Error monitoring progress")
+                    )
                     return
 
                 # If the number has changed, update the progress bar

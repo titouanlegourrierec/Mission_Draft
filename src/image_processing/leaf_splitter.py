@@ -55,6 +55,29 @@ class LeafSplitter:
         self.margin: int = margin
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _read_image(self) -> Any:
+        """
+        Read the image using PIL and convert it to OpenCV format.
+
+        Returns:
+            Any: Image as a NumPy array in BGR format for OpenCV
+        """
+        from PIL import Image as PILImage
+
+        # Disable DecompressionBomb safety check for large images
+        PILImage.MAX_IMAGE_PIXELS = None
+
+        # Use PIL to read the image
+        try:
+            pil_img = PILImage.open(str(self.img_path))
+            img = np.array(pil_img.convert("RGB"))
+            # Convert from RGB to BGR for OpenCV compatibility
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            return img
+        except Exception as e:
+            print(f"Error reading image {self.img_path}: {str(e)}")
+            return None
+
     def detect_leaf_boxes(self, img: Any) -> List[List[int]]:
         """
         Detect bounding boxes of leaves (or objects) in the image.
@@ -96,7 +119,9 @@ class LeafSplitter:
         """
         from PIL import Image as PILImage
 
-        img = cv2.imread(str(self.img_path))
+        # Use our helper method to read the image
+        img = self._read_image()
+
         if img is None:
             raise FileNotFoundError(
                 f"Image not found or could not be read: {self.img_path}"

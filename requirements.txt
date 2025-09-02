@@ -4,3 +4,4 @@ mplcursors
 opencv-python
 pandas
 requests
+rich

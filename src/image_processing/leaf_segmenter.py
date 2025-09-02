@@ -52,6 +52,7 @@ class LeafSegmenter:
         Run Ilastik segmentation on images in the input directory and save results to the output directory.
         Optionally, input and output paths can be provided; otherwise, instance attributes are used.
         After segmentation, renames files to remove '_Simple_Segmentation' from filenames.
+        Temporarily moves any CSV files out of the input directory during Ilastik processing.
 
         Args:
             input_path (str, optional): Path to the input images directory.
@@ -73,22 +74,41 @@ class LeafSegmenter:
         self.input_path = input_path
         self.output_path = output_path
 
-        run_ilastik(
-            input_path=input_path,
-            model_path=self.model_path,
-            result_base_path=output_path,
-        )
-
-        # Rename files to remove '_Simple_Segmentation' from filenames
+        # Temporarily move CSV files out of the input directory
         import os
+        import tempfile
 
-        for fname in os.listdir(output_path):
-            if "_Simple_Segmentation" in fname:
-                new_name = fname.replace("_Simple_Segmentation", "")
-                src = os.path.join(output_path, fname)
-                dst = os.path.join(output_path, new_name)
-                if not os.path.exists(dst):
-                    os.rename(src, dst)
+        temp_dir = tempfile.mkdtemp()
+        csv_files = []
+
+        for fname in os.listdir(input_path):
+            if fname.lower().endswith(".csv"):
+                src = os.path.join(input_path, fname)
+                dst = os.path.join(temp_dir, fname)
+                os.rename(src, dst)
+                csv_files.append((src, dst))
+
+        try:
+            # Run Ilastik without CSV files
+            run_ilastik(
+                input_path=input_path,
+                model_path=self.model_path,
+                result_base_path=output_path,
+            )
+
+            # Rename files to remove '_Simple_Segmentation' from filenames
+            for fname in os.listdir(output_path):
+                if "_Simple_Segmentation" in fname:
+                    new_name = fname.replace("_Simple_Segmentation", "")
+                    src = os.path.join(output_path, fname)
+                    dst = os.path.join(output_path, new_name)
+                    if not os.path.exists(dst):
+                        os.rename(src, dst)
+        finally:
+            # Move CSV files back to input directory
+            for src, dst in csv_files:
+                if os.path.exists(dst):
+                    os.rename(dst, src)
 
     def make_bilan(self) -> None:
         """
